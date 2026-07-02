@@ -1,0 +1,23 @@
+{
+  "name": "sqlite-mcp-express",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Demo MCP Server membaca SQLite dengan Express.js",
+  "main": "src/server.js",
+  "scripts": {
+    "populate": "node src/populate.js",
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.1",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  }
+}

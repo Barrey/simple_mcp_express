@@ -101,6 +101,7 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         if (args?.category) {
           query += ' WHERE category = ?';
+          query += ' COLLATE NOCASE';
           params.push(args.category);
         }
 

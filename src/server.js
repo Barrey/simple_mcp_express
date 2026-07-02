@@ -9,6 +9,26 @@ const PORT = process.env.PORT || 3000;
 // Mengizinkan CORS agar klien MCP eksternal bisa terhubung ke server ini
 app.use(cors());
 
+/**
+ * Endpoint POST /message
+ * Menerima payload JSON-RPC dari klien MCP lalu meneruskannya ke server MCP lewat transport aktif.
+ */
+app.post('/message', async (req, res) => {
+  console.log('Menerima pesan JSON-RPC dari klien');
+
+  if (!activeTransport) {
+    return res.status(400).send('Tidak ada koneksi SSE yang aktif.');
+  }
+
+  try {
+    // Meneruskan request body ke transport untuk diproses oleh mcpServer
+    await activeTransport.handlePostMessage(req, res);
+  } catch (error) {
+    console.error('Gagal memproses pesan JSON-RPC:', error);
+    res.status(500).send(error.message);
+  }
+});
+
 // Middleware untuk membaca payload JSON pada request body
 app.use(express.json());
 
@@ -39,26 +59,6 @@ app.get('/sse', async (req, res) => {
   } catch (error) {
     console.error('Gagal menghubungkan MCP Server ke SSE:', error);
     res.status(500).send('Koneksi MCP Gagal');
-  }
-});
-
-/**
- * Endpoint POST /message
- * Menerima payload JSON-RPC dari klien MCP lalu meneruskannya ke server MCP lewat transport aktif.
- */
-app.post('/message', async (req, res) => {
-  console.log('Menerima pesan JSON-RPC dari klien');
-
-  if (!activeTransport) {
-    return res.status(400).send('Tidak ada koneksi SSE yang aktif.');
-  }
-
-  try {
-    // Meneruskan request body ke transport untuk diproses oleh mcpServer
-    await activeTransport.handlePostMessage(req, res);
-  } catch (error) {
-    console.error('Gagal memproses pesan JSON-RPC:', error);
-    res.status(500).send(error.message);
   }
 });
 

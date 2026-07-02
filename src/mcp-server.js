@@ -4,7 +4,7 @@ import {
   ListToolsRequestSchema,
   ListResourcesRequestSchema,
   ReadResourceRequestSchema
-} from '@modelcontextprotocol/sdk/common/shared.js';
+} from '@modelcontextprotocol/sdk/types.js';
 import { getDb } from './database.js';
 
 // Membuat instance Server MCP

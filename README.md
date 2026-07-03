@@ -52,10 +52,10 @@ npm.cmd run dev
 ```
 ====================================================
 Server HTTP Express berjalan di http://localhost:3000
-Endpoint SSE MCP siap di: http://localhost:3000/sse
+Endpoint MCP siap di: http://localhost:3000/mcp
 ====================================================
 ```
-Server sekarang aktif dan siap menerima koneksi MCP di alamat `http://localhost:3000/sse`.
+Server sekarang aktif dan siap menerima koneksi MCP di alamat `http://localhost:3000/mcp`.
 
 ---
 
@@ -66,9 +66,9 @@ Server sekarang aktif dan siap menerima koneksi MCP di alamat `http://localhost:
 ### Langkah-langkah Pengujian:
 
 1. **Pastikan Server Express Tetap Berjalan** pada port 3000 (dari langkah sebelumnya).
-2. **Buka Terminal Baru**, masuk ke direktori proyek, lalu jalankan perintah MCP Inspector dengan mengarahkan ke endpoint SSE server:
+2. **Buka Terminal Baru**, masuk ke direktori proyek, lalu jalankan perintah MCP Inspector dengan mengarahkan ke endpoint server:
    ```bash
-   npx @modelcontextprotocol/inspector http://localhost:3000/sse
+   npx @modelcontextprotocol/inspector http://localhost:3000/mcp
    ```
 3. **Buka Browser**: Terminal Inspector akan menampilkan URL lokal (biasanya `http://localhost:5173`). Buka URL tersebut di browser pilihan Anda.
 4. **Gunakan Antarmuka Web Inspector**:

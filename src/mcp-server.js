@@ -7,19 +7,20 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { getDb } from './database.js';
 
-// Membuat instance Server MCP
-export const mcpServer = new Server(
-  {
-    name: 'sqlite-mcp-server',
-    version: '1.0.0',
-  },
-  {
-    capabilities: {
-      tools: {},
-      resources: {},
+// Membuat fungsi untuk menginisialisasi Server MCP baru per sesi
+export function createMcpServer() {
+  const mcpServer = new Server(
+    {
+      name: 'sqlite-mcp-server',
+      version: '1.0.0',
     },
-  }
-);
+    {
+      capabilities: {
+        tools: {},
+        resources: {},
+      },
+    }
+  );
 
 /**
  * Mendaftarkan Tools yang tersedia pada server MCP ini.
@@ -228,3 +229,6 @@ mcpServer.setRequestHandler(ReadResourceRequestSchema, async (request) => {
 
   throw new Error(`Resource tidak ditemukan: ${uri}`);
 });
+
+  return mcpServer;
+}

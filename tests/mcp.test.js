@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { mcpServer } from '../src/mcp-server.js';
+import { createMcpServer } from '../src/mcp-server.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 
 test('MCP Server Tools Test', async (t) => {
+  const mcpServer = createMcpServer();
   // Helper untuk memanggil tool mcpServer secara lokal
   const callMcpTool = async (name, args = {}) => {
     const handlers = mcpServer._requestHandlers.get('tools/call');

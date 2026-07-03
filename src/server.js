@@ -1,7 +1,8 @@
 import express from 'express';
 import cors from 'cors';
-import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
-import { mcpServer } from './mcp-server.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { createMcpServer } from './mcp-server.js';
+import { randomUUID } from 'node:crypto';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -9,64 +10,83 @@ const PORT = process.env.PORT || 3000;
 // Mengizinkan CORS agar klien MCP eksternal bisa terhubung ke server ini
 app.use(cors());
 
-/**
- * Endpoint POST /message
- * Menerima payload JSON-RPC dari klien MCP lalu meneruskannya ke server MCP lewat transport aktif.
- */
-app.post('/message', async (req, res) => {
-  console.log('Menerima pesan JSON-RPC dari klien');
-
-  if (!activeTransport) {
-    return res.status(400).send('Tidak ada koneksi SSE yang aktif.');
-  }
-
-  try {
-    // Meneruskan request body ke transport untuk diproses oleh mcpServer
-    await activeTransport.handlePostMessage(req, res);
-  } catch (error) {
-    console.error('Gagal memproses pesan JSON-RPC:', error);
-    res.status(500).send(error.message);
-  }
-});
-
 // Middleware untuk membaca payload JSON pada request body
 app.use(express.json());
 
-// Menyimpan referensi transport aktif untuk dipasangkan dengan pesan POST
-let activeTransport = null;
+// Menyimpan referensi transport aktif berdasarkan session ID
+const transports = new Map();
 
 /**
- * Endpoint GET /sse
- * Membuka koneksi Server-Sent Events (SSE) antara klien MCP dan server ini.
+ * Endpoint tunggal untuk menangani request MCP (GET, POST, DELETE)
+ * StreamableHTTPServerTransport secara otomatis mendeteksi dan menangani request sesuai spesifikasi.
  */
-app.get('/sse', async (req, res) => {
-  console.log('Menerima koneksi baru di endpoint /sse');
+const handleMcp = async (req, res) => {
+    // Membaca session ID dari header request
+    const sessionId = req.headers['mcp-session-id'];
+    let transport = sessionId ? transports.get(sessionId) : null;
 
-  // SSEServerTransport memerlukan endpoint tempat pesan POST akan dikirimkan
-  // Kita arahkan ke endpoint POST /message di server ini
-  activeTransport = new SSEServerTransport('/message', res);
+    if (!transport) {
+        // Jika klien mengirim session ID tapi transport tidak ada di memori
+        if (sessionId) {
+            return res.status(404).json({
+                jsonrpc: '2.0',
+                error: { code: -32000, message: 'Session tidak ditemukan' },
+                id: null
+            });
+        }
 
-  try {
-    // Menghubungkan transport SSE ke instance mcpServer kita
-    await mcpServer.connect(activeTransport);
-    console.log('Koneksi MCP berhasil terhubung melalui SSE.');
+        // Membuat transport baru untuk sesi baru
+        transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: () => randomUUID(),
+            onsessioninitialized: (id) => {
+                console.log(`Sesi MCP baru diinisialisasi dengan ID: ${id}`);
+                transports.set(id, transport);
+            }
+        });
 
-    // Jika koneksi ditutup oleh klien
-    req.on('close', () => {
-      console.log('Koneksi SSE ditutup oleh klien.');
-      activeTransport = null;
-    });
-  } catch (error) {
-    console.error('Gagal menghubungkan MCP Server ke SSE:', error);
-    res.status(500).send('Koneksi MCP Gagal');
-  }
-});
+        // Hubungkan ke instance MCP Server baru khusus sesi ini
+        const server = createMcpServer();
+        await server.connect(transport);
+
+        // Hapus transport dari memori jika koneksi ditutup
+        transport.onclose = () => {
+            console.log('Koneksi sesi ditutup.');
+            for (const [id, t] of transports.entries()) {
+                if (t === transport) {
+                    transports.delete(id);
+                    break;
+                }
+            }
+        };
+    }
+
+    try {
+        // Meneruskan req, res, dan body ke transport untuk diproses oleh MCP Server
+        await transport.handleRequest(req, res, req.body);
+    } catch (error) {
+        console.error('Gagal memproses request MCP:', error);
+        if (!res.headersSent) {
+            res.status(500).json({
+                jsonrpc: '2.0',
+                error: { code: -32603, message: 'Internal server error' },
+                id: null
+            });
+        }
+    }
+};
+
+// Route utama untuk Streamable HTTP MCP (Menerima GET, POST, DELETE)
+app.all('/mcp', handleMcp);
+
+// Kompatibilitas ke belakang untuk klien yang menggunakan endpoint lama (/sse dan /message)
+app.all('/sse', handleMcp);
+app.all('/message', handleMcp);
 
 /**
  * Halaman beranda untuk memberikan panduan ringkas.
  */
 app.get('/', (req, res) => {
-  res.send(`
+    res.send(`
     <html>
       <head>
         <title>SQLite Express MCP Server</title>
@@ -76,11 +96,11 @@ app.get('/', (req, res) => {
         </style>
       </head>
       <body>
-        <h1>SQLite Express MCP Server</h1>
+        <h1>SQLite Express MCP Server (Streamable HTTP)</h1>
         <p>Server MCP sedang aktif!</p>
         <p>Gunakan URL berikut pada client MCP Anda:</p>
         <ul>
-          <li>SSE Connection URL: <code>http://localhost:${PORT}/sse</code></li>
+          <li>Connection URL: <code>http://localhost:${PORT}/mcp</code></li>
         </ul>
         <p>Gunakan perintah <code>npm run populate</code> untuk reset database SQLite jika diperlukan.</p>
       </body>
@@ -90,8 +110,8 @@ app.get('/', (req, res) => {
 
 // Mulai mendengarkan request pada port yang ditentukan
 app.listen(PORT, () => {
-  console.log(`====================================================`);
-  console.log(`Server HTTP Express berjalan di http://localhost:${PORT}`);
-  console.log(`Endpoint SSE MCP siap di: http://localhost:${PORT}/sse`);
-  console.log(`====================================================`);
+    console.log(`====================================================`);
+    console.log(`Server HTTP Express berjalan di http://localhost:${PORT}`);
+    console.log(`Endpoint MCP siap di: http://localhost:${PORT}/mcp`);
+    console.log(`====================================================`);
 });

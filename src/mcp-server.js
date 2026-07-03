@@ -1,15 +1,10 @@
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-  ListResourcesRequestSchema,
-  ReadResourceRequestSchema
-} from '@modelcontextprotocol/sdk/types.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { z } from 'zod';
 import { getDb } from './database.js';
 
 // Membuat fungsi untuk menginisialisasi Server MCP baru per sesi
 export function createMcpServer() {
-  const mcpServer = new Server(
+  const mcpServer = new McpServer(
     {
       name: 'sqlite-mcp-server',
       version: '1.0.0',
@@ -22,88 +17,25 @@ export function createMcpServer() {
     }
   );
 
-/**
- * Mendaftarkan Tools yang tersedia pada server MCP ini.
- */
-mcpServer.setRequestHandler(ListToolsRequestSchema, async () => {
-  return {
-    tools: [
-      {
-        name: 'list_products',
-        description: 'Mengambil seluruh daftar produk. Bisa difilter berdasarkan kategori.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            category: {
-              type: 'string',
-              description: 'Kategori produk untuk difilter (contoh: "Elektronik", "Buku")',
-            },
-          },
-        },
-      },
-      {
-        name: 'search_products',
-        description: 'Mencari produk berdasarkan kata kunci pencarian pada nama atau deskripsi produk.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            query: {
-              type: 'string',
-              description: 'Kata kunci pencarian',
-            },
-          },
-          required: ['query'],
-        },
-      },
-      {
-        name: 'get_product',
-        description: 'Mengambil informasi lengkap produk berdasarkan ID produk.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            id: {
-              type: 'integer',
-              description: 'ID produk yang ingin dicari',
-            },
-          },
-          required: ['id'],
-        },
-      },
-      {
-        name: 'get_customer_orders',
-        description: 'Mengambil semua riwayat pesanan (orders) milik pelanggan tertentu beserta detail produknya.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            customerId: {
-              type: 'integer',
-              description: 'ID Pelanggan',
-            },
-          },
-          required: ['customerId'],
-        },
-      },
-    ],
-  };
-});
-
-/**
- * Menangani pemanggilan Tool oleh AI.
- */
-mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
-  const db = await getDb();
-
-  try {
-    switch (name) {
-      case 'list_products': {
+  // Mendaftarkan tools
+  mcpServer.registerTool(
+    'list_products',
+    {
+      description: 'Mengambil seluruh daftar produk. Bisa difilter berdasarkan kategori.',
+      inputSchema: {
+        category: z.string().optional().describe('Kategori produk untuk difilter (contoh: "Elektronik", "Buku")')
+      }
+    },
+    async ({ category }) => {
+      try {
+        const db = await getDb();
         let query = 'SELECT * FROM products';
         const params = [];
 
-        if (args?.category) {
+        if (category) {
           query += ' WHERE category = ?';
           query += ' COLLATE NOCASE';
-          params.push(args.category);
+          params.push(category);
         }
 
         const products = await db.all(query, params);
@@ -115,10 +47,32 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
             },
           ],
         };
+      } catch (error) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text',
+              text: `Terjadi error saat menjalankan query: ${error.message}`,
+            },
+          ],
+        };
       }
+    }
+  );
 
-      case 'search_products': {
-        const searchQuery = `%${args.query}%`;
+  mcpServer.registerTool(
+    'search_products',
+    {
+      description: 'Mencari produk berdasarkan kata kunci pencarian pada nama atau deskripsi produk.',
+      inputSchema: {
+        query: z.string().describe('Kata kunci pencarian')
+      }
+    },
+    async ({ query }) => {
+      try {
+        const db = await getDb();
+        const searchQuery = `%${query}%`;
         const products = await db.all(
           'SELECT * FROM products WHERE name LIKE ? OR description LIKE ?',
           [searchQuery, searchQuery]
@@ -131,17 +85,39 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
             },
           ],
         };
+      } catch (error) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text',
+              text: `Terjadi error saat menjalankan query: ${error.message}`,
+            },
+          ],
+        };
       }
+    }
+  );
 
-      case 'get_product': {
-        const product = await db.get('SELECT * FROM products WHERE id = ?', [args.id]);
+  mcpServer.registerTool(
+    'get_product',
+    {
+      description: 'Mengambil informasi lengkap produk berdasarkan ID produk.',
+      inputSchema: {
+        id: z.number().int().describe('ID produk yang ingin dicari')
+      }
+    },
+    async ({ id }) => {
+      try {
+        const db = await getDb();
+        const product = await db.get('SELECT * FROM products WHERE id = ?', [id]);
         if (!product) {
           return {
             isError: true,
             content: [
               {
                 type: 'text',
-                text: `Produk dengan ID ${args.id} tidak ditemukan.`,
+                text: `Produk dengan ID ${id} tidak ditemukan.`,
               },
             ],
           };
@@ -154,9 +130,31 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
             },
           ],
         };
+      } catch (error) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text',
+              text: `Terjadi error saat menjalankan query: ${error.message}`,
+            },
+          ],
+        };
       }
+    }
+  );
 
-      case 'get_customer_orders': {
+  mcpServer.registerTool(
+    'get_customer_orders',
+    {
+      description: 'Mengambil semua riwayat pesanan (orders) milik pelanggan tertentu beserta detail produknya.',
+      inputSchema: {
+        customerId: z.number().int().describe('ID Pelanggan')
+      }
+    },
+    async ({ customerId }) => {
+      try {
+        const db = await getDb();
         const query = `
           SELECT o.id as order_id, o.quantity, o.order_date,
                  p.name as product_name, p.price as product_price, p.category as product_category
@@ -164,7 +162,7 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
           JOIN products p ON o.product_id = p.id
           WHERE o.customer_id = ?
         `;
-        const orders = await db.all(query, [args.customerId]);
+        const orders = await db.all(query, [customerId]);
         return {
           content: [
             {
@@ -173,62 +171,43 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
             },
           ],
         };
+      } catch (error) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text',
+              text: `Terjadi error saat menjalankan query: ${error.message}`,
+            },
+          ],
+        };
       }
-
-      default:
-        throw new Error(`Tool tidak ditemukan: ${name}`);
     }
-  } catch (error) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text',
-          text: `Terjadi error saat menjalankan query: ${error.message}`,
-        },
-      ],
-    };
-  }
-});
+  );
 
-/**
- * Mendaftarkan Resource yang tersedia (misalnya data seluruh tabel produk).
- */
-mcpServer.setRequestHandler(ListResourcesRequestSchema, async () => {
-  return {
-    resources: [
-      {
-        uri: 'sqlite://products',
-        name: 'Seluruh Daftar Produk',
-        mimeType: 'application/json',
-        description: 'Menyediakan representasi JSON mentah dari semua data produk di database SQLite.',
-      },
-    ],
-  };
-});
-
-/**
- * Membaca konten Resource berdasarkan URI.
- */
-mcpServer.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-  const { uri } = request.params;
-
-  if (uri === 'sqlite://products') {
-    const db = await getDb();
-    const products = await db.all('SELECT * FROM products');
-    return {
-      contents: [
-        {
-          uri,
-          mimeType: 'application/json',
-          text: JSON.stringify(products, null, 2),
-        },
-      ],
-    };
-  }
-
-  throw new Error(`Resource tidak ditemukan: ${uri}`);
-});
+  // Mendaftarkan resource
+  mcpServer.registerResource(
+    'sqlite-products',
+    'sqlite://products',
+    {
+      title: 'Seluruh Daftar Produk',
+      description: 'Menyediakan representasi JSON mentah dari semua data produk di database SQLite.',
+      mimeType: 'application/json'
+    },
+    async () => {
+      const db = await getDb();
+      const products = await db.all('SELECT * FROM products');
+      return {
+        contents: [
+          {
+            uri: 'sqlite://products',
+            text: JSON.stringify(products, null, 2),
+          },
+        ],
+      };
+    }
+  );
 
   return mcpServer;
 }
+

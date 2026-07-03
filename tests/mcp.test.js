@@ -7,7 +7,8 @@ test('MCP Server Tools Test', async (t) => {
   const mcpServer = createMcpServer();
   // Helper untuk memanggil tool mcpServer secara lokal
   const callMcpTool = async (name, args = {}) => {
-    const handlers = mcpServer._requestHandlers.get('tools/call');
+    const serverObj = mcpServer.server || mcpServer;
+    const handlers = serverObj._requestHandlers.get('tools/call');
     if (!handlers) {
       throw new Error('CallTool handler tidak terdaftar');
     }
@@ -21,7 +22,8 @@ test('MCP Server Tools Test', async (t) => {
   };
 
   await t.test('Harus mendaftarkan semua tool dengan benar', async () => {
-    const listHandlers = mcpServer._requestHandlers.get('tools/list');
+    const serverObj = mcpServer.server || mcpServer;
+    const listHandlers = serverObj._requestHandlers.get('tools/list');
     const result = await listHandlers({
       method: 'tools/list'
     });
